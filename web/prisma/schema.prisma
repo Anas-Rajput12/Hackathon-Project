@@ -1,0 +1,354 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CITIZEN
+  INSPECTOR
+  NGO
+  AUTHORITY
+  ADMIN
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  DETECTED
+  OPEN
+  UNDER_REVIEW
+  VERIFIED
+  RESOLVED
+  CLOSED
+}
+
+enum EvidenceType {
+  IMAGE
+  DOCUMENT
+  VIDEO
+}
+
+enum EvidenceStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum WaterBodyType {
+  RIVER
+  LAKE
+  RESERVOIR
+  GROUNDWATER
+  COASTAL
+}
+
+enum AlertType {
+  CRITICAL_POLLUTION
+  HIGH_RISK
+  NEW_INCIDENT
+  VERIFICATION
+  RESOLUTION
+  SATELLITE_ALERT
+}
+
+enum AgentStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum RiskLevel {
+  NORMAL
+  WATCH
+  HIGH
+  CRITICAL
+}
+
+enum MonitoringStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  role          Role     @default(CITIZEN)
+  password      String?
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  incidents   Incident[]   @relation("ReportedBy")
+  evidence    Evidence[]
+  alerts      Alert[]
+  assignments Assignment[] @relation("InspectorAssignments")
+  assignedBy  Assignment[] @relation("AssignedBy")
+  auditLogs   AuditLog[]
+  sessions    Session[]
+  accounts    Account[]
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issuer                String?
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model WaterBody {
+  id          String        @id @default(cuid())
+  name        String
+  type        WaterBodyType
+  description String?
+  coordinates Json?
+  latitude    Float?
+  longitude   Float?
+  waterAreaKm2 Float?
+  riskLevel   RiskLevel?
+  geometry    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  incidents           Incident[]
+  satelliteMonitoring SatelliteMonitoring?
+}
+
+model Incident {
+  id            String         @id @default(cuid())
+  title         String
+  description   String
+  latitude      Float
+  longitude     Float
+  pollutionType String
+  severity      Severity       @default(MEDIUM)
+  status        IncidentStatus @default(OPEN)
+  reportedAt    DateTime       @default(now())
+  resolvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  reportedById String
+  reportedBy   User   @relation("ReportedBy", fields: [reportedById], references: [id])
+
+  waterBodyId     String?
+  waterBody       WaterBody?     @relation(fields: [waterBodyId], references: [id])
+  satelliteScanId String?        @unique
+  satelliteScan   SatelliteScan? @relation(fields: [satelliteScanId], references: [id], onDelete: SetNull)
+
+  evidence      Evidence[]
+  alerts        Alert[]
+  agentAnalyses AgentAnalysis[]
+  assignment    Assignment?
+
+  @@index([status, reportedAt])
+  @@index([severity, reportedAt])
+  @@index([reportedAt])
+  @@index([waterBodyId])
+  @@index([reportedById, reportedAt])
+}
+
+model Evidence {
+  id                     String         @id @default(cuid())
+  fileUrl                String
+  fileType               EvidenceType
+  description            String?
+  status                 EvidenceStatus @default(PENDING)
+  verificationConfidence Float?
+  metadata               Json?
+  uploadedAt             DateTime       @default(now())
+
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  @@index([incidentId, uploadedAt])
+  @@index([uploadedById])
+}
+
+model Alert {
+  id        String    @id @default(cuid())
+  type      AlertType
+  title     String
+  message   String
+  isRead    Boolean   @default(false)
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime  @default(now())
+
+  incidentId      String?
+  incident        Incident?      @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  satelliteScanId String?
+  satelliteScan   SatelliteScan? @relation(fields: [satelliteScanId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, satelliteScanId])
+  @@index([userId, isRead, createdAt])
+  @@index([incidentId])
+  @@index([satelliteScanId])
+}
+
+model AgentAnalysis {
+  id         String      @id @default(cuid())
+  agentName  String
+  status     AgentStatus @default(PENDING)
+  input      Json?
+  output     Json?
+  confidence Float?
+  runAt      DateTime    @default(now())
+
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, runAt])
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  notes      String?
+  assignedAt DateTime @default(now())
+
+  incidentId String   @unique
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  inspectorId String
+  inspector   User   @relation("InspectorAssignments", fields: [inspectorId], references: [id])
+
+  assignedById String
+  assignedBy   User   @relation("AssignedBy", fields: [assignedById], references: [id])
+
+  @@index([inspectorId, assignedAt])
+  @@index([assignedById])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model SatelliteMonitoring {
+  id                      String           @id @default(cuid())
+  latitude                Float
+  longitude               Float
+  bboxNorth               Float
+  bboxSouth               Float
+  bboxEast                Float
+  bboxWest                Float
+  status                  MonitoringStatus @default(ACTIVE)
+  thresholdWatch          Float            @default(10)
+  thresholdHigh           Float            @default(20)
+  thresholdCritical       Float            @default(35)
+  lastCheckedAt           DateTime?
+  previousObservationDate DateTime?
+  previousWaterAreaKm2    Float?
+  latestObservationDate   DateTime?
+  latestWaterAreaKm2      Float?
+  latestChangePercent     Float?
+  latestRiskLevel         RiskLevel?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  waterBodyId String    @unique
+  waterBody   WaterBody @relation(fields: [waterBodyId], references: [id])
+
+  scans SatelliteScan[]
+
+  @@index([status])
+  @@index([waterBodyId])
+}
+
+model SatelliteScan {
+  id                      String    @id @default(cuid())
+  observationDate         DateTime
+  previousObservationDate DateTime?
+  waterAreaKm2            Float
+  previousWaterAreaKm2    Float?
+  changePercent           Float
+  riskLevel               RiskLevel
+  cloudCoverage           Float?
+  dataSource              String
+  isSimulation            Boolean   @default(false)
+  alertCreated            Boolean   @default(false)
+  status                  String    @default("COMPLETED")
+  errorMessage            String?
+  productId               String?
+  productTitle            String?
+  acquisitionBbox         Json?
+  waterPixels             Int?
+  totalPixels             Int?
+  pixelAreaKm2            Float?
+  ndwiImageRef            String?
+  rgbImageRef             String?
+  anomaly                 Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+
+  monitoringId String
+  monitoring   SatelliteMonitoring @relation(fields: [monitoringId], references: [id])
+  alerts       Alert[]
+  incident     Incident?
+
+  @@unique([monitoringId, productId])
+  @@index([monitoringId, createdAt])
+  @@index([riskLevel])
+  @@index([isSimulation])
+}

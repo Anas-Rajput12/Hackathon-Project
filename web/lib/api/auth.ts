@@ -1,0 +1,27 @@
+export {
+  requireAuth,
+  requireRole,
+  optionalAuth,
+  requireAnyRole,
+  canViewIncident,
+  canEditIncident,
+  canDeleteIncident,
+  canReviewEvidence,
+  canAssignInspector,
+  canChangeUserRole,
+  canViewAnalytics,
+  canManageUsers,
+  canViewAuditLogs,
+  validateStatusTransition,
+  allowedNextStatuses,
+  assertCanViewIncident,
+  isAdmin,
+  isAuthorityOrAdmin,
+  isStaff,
+  STAFF_ROLES,
+  MANAGEMENT_ROLES,
+  getRoleDashboardTitle,
+  getRoleDashboardSubtitle,
+} from "@/lib/rbac";
+
+export type { AuthedUser } from "@/lib/rbac";
